@@ -1,0 +1,208 @@
+---
+# Setup workstation — installs gcloud CLI, kubectl, terraform, and helm.
+# Targets Ubuntu/Debian. All tasks are idempotent.
+# Usage:
+#   ansible-playbook ansible/playbooks/setup-workstation.yml --ask-become-pass
+
+- name: Set up developer workstation
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: true
+
+  vars:
+    terraform_version: "1.8.5"
+    helm_version: "3.15.2"
+    helm_install_dir: /usr/local/bin
+    terraform_install_dir: /usr/local/bin
+
+  tasks:
+    # ------------------------------------------------------------------
+    # Prerequisites
+    # ------------------------------------------------------------------
+    - name: Install apt prerequisites
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - unzip
+          - software-properties-common
+        state: present
+        update_cache: true
+
+    # ------------------------------------------------------------------
+    # Google Cloud CLI
+    # ------------------------------------------------------------------
+    - name: Add Google Cloud apt signing key
+      ansible.builtin.apt_key:
+        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+        state: present
+
+    - name: Add Google Cloud apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main"
+        state: present
+        filename: google-cloud-sdk
+
+    - name: Add Google Cloud apt signing key (keyring)
+      ansible.builtin.shell: |
+        curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+          | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+      args:
+        creates: /usr/share/keyrings/cloud.google.gpg
+
+    - name: Install google-cloud-cli
+      ansible.builtin.apt:
+        name: google-cloud-cli
+        state: present
+        update_cache: true
+
+    - name: Verify gcloud is installed
+      ansible.builtin.command: gcloud --version
+      register: gcloud_version
+      changed_when: false
+
+    - name: Print gcloud version
+      ansible.builtin.debug:
+        msg: "{{ gcloud_version.stdout_lines[0] }}"
+
+    # ------------------------------------------------------------------
+    # kubectl
+    # ------------------------------------------------------------------
+    - name: Add Kubernetes apt signing key (keyring)
+      ansible.builtin.shell: |
+        curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key \
+          | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      args:
+        creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+    - name: Add Kubernetes apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /"
+        state: present
+        filename: kubernetes
+
+    - name: Install kubectl
+      ansible.builtin.apt:
+        name: kubectl
+        state: present
+        update_cache: true
+
+    - name: Verify kubectl is installed
+      ansible.builtin.command: kubectl version --client --output=yaml
+      register: kubectl_version
+      changed_when: false
+
+    - name: Print kubectl version
+      ansible.builtin.debug:
+        msg: "{{ kubectl_version.stdout_lines | select('search', 'gitVersion') | list | first | default('kubectl installed') }}"
+
+    # ------------------------------------------------------------------
+    # Terraform (download binary — HashiCorp apt repo requires a license
+    # agreement for the BSL version; using direct binary is more portable)
+    # ------------------------------------------------------------------
+    - name: Check if terraform {{ terraform_version }} is already installed
+      ansible.builtin.command: terraform version -json
+      register: tf_check
+      changed_when: false
+      failed_when: false
+
+    - name: Set terraform_installed fact
+      ansible.builtin.set_fact:
+        terraform_installed: >-
+          {{ (tf_check.rc == 0) and
+             (terraform_version in (tf_check.stdout | from_json).terraform_version | default('')) }}
+
+    - name: Download Terraform {{ terraform_version }}
+      ansible.builtin.get_url:
+        url: "https://releases.hashicorp.com/terraform/{{ terraform_version }}/terraform_{{ terraform_version }}_linux_amd64.zip"
+        dest: "/tmp/terraform_{{ terraform_version }}.zip"
+        mode: "0644"
+      when: not terraform_installed
+
+    - name: Unzip Terraform binary
+      ansible.builtin.unarchive:
+        src: "/tmp/terraform_{{ terraform_version }}.zip"
+        dest: "{{ terraform_install_dir }}"
+        remote_src: true
+        creates: "{{ terraform_install_dir }}/terraform"
+      when: not terraform_installed
+
+    - name: Ensure terraform binary is executable
+      ansible.builtin.file:
+        path: "{{ terraform_install_dir }}/terraform"
+        mode: "0755"
+        state: file
+
+    - name: Verify terraform is installed
+      ansible.builtin.command: terraform version
+      register: tf_version
+      changed_when: false
+
+    - name: Print terraform version
+      ansible.builtin.debug:
+        msg: "{{ tf_version.stdout_lines[0] }}"
+
+    # ------------------------------------------------------------------
+    # Helm
+    # ------------------------------------------------------------------
+    - name: Check if helm {{ helm_version }} is already installed
+      ansible.builtin.command: helm version --short
+      register: helm_check
+      changed_when: false
+      failed_when: false
+
+    - name: Set helm_installed fact
+      ansible.builtin.set_fact:
+        helm_installed: >-
+          {{ (helm_check.rc == 0) and
+             (helm_version in helm_check.stdout | default('')) }}
+
+    - name: Download Helm {{ helm_version }}
+      ansible.builtin.get_url:
+        url: "https://get.helm.sh/helm-v{{ helm_version }}-linux-amd64.tar.gz"
+        dest: "/tmp/helm-v{{ helm_version }}.tar.gz"
+        mode: "0644"
+      when: not helm_installed
+
+    - name: Extract Helm binary
+      ansible.builtin.unarchive:
+        src: "/tmp/helm-v{{ helm_version }}.tar.gz"
+        dest: "/tmp"
+        remote_src: true
+      when: not helm_installed
+
+    - name: Install Helm binary to {{ helm_install_dir }}
+      ansible.builtin.copy:
+        src: /tmp/linux-amd64/helm
+        dest: "{{ helm_install_dir }}/helm"
+        mode: "0755"
+        remote_src: true
+      when: not helm_installed
+
+    - name: Verify helm is installed
+      ansible.builtin.command: helm version --short
+      register: helm_version_check
+      changed_when: false
+
+    - name: Print helm version
+      ansible.builtin.debug:
+        msg: "{{ helm_version_check.stdout }}"
+
+    # ------------------------------------------------------------------
+    # Summary
+    # ------------------------------------------------------------------
+    - name: Installation summary
+      ansible.builtin.debug:
+        msg: |
+          ============================================================
+          Workstation setup complete
+          ============================================================
+          gcloud    : installed
+          kubectl   : installed
+          terraform : {{ terraform_version }}
+          helm      : {{ helm_version }}
+          ============================================================

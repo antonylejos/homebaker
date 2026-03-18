@@ -1,0 +1,102 @@
+name: Destroy Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type 'destroy' to confirm destruction of all infrastructure"
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  destroy:
+    name: Destroy All Infrastructure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate confirmation input
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "destroy" ]; then
+            echo "ERROR: Confirmation input was '${{ github.event.inputs.confirm }}', expected 'destroy'."
+            echo "Aborting to prevent accidental infrastructure destruction."
+            exit 1
+          fi
+          echo "Confirmation accepted. Proceeding with destruction."
+
+      - name: Auth GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Get GKE credentials
+        run: |
+          # Attempt to read cluster info from Terraform state before destroying
+          echo "Fetching cluster credentials for pre-destroy cleanup..."
+          PROJECT_ID=$(echo "${{ vars.GCP_PROJECT_ID }}" | tr -d '[:space:]')
+          REGION=$(echo "${{ vars.GCP_REGION }}" | tr -d '[:space:]')
+
+          # Try to find the cluster via gcloud (in case TF state is unavailable)
+          CLUSTER_NAME=$(gcloud container clusters list \
+            --project="${PROJECT_ID}" \
+            --filter="name~homebaker" \
+            --format="value(name)" \
+            --limit=1 2>/dev/null || echo "")
+
+          CLUSTER_ZONE=$(gcloud container clusters list \
+            --project="${PROJECT_ID}" \
+            --filter="name~homebaker" \
+            --format="value(location)" \
+            --limit=1 2>/dev/null || echo "")
+
+          if [ -n "${CLUSTER_NAME}" ] && [ -n "${CLUSTER_ZONE}" ]; then
+            gcloud container clusters get-credentials "${CLUSTER_NAME}" \
+              --zone "${CLUSTER_ZONE}" \
+              --project "${PROJECT_ID}" \
+              || echo "Could not get cluster credentials — skipping kubectl cleanup"
+          else
+            echo "No homebaker cluster found via gcloud — skipping kubectl cleanup"
+          fi
+
+      - name: Delete Kubernetes namespace and all resources
+        run: |
+          echo "Deleting homebaker namespace and all resources within it..."
+          kubectl delete namespace homebaker --timeout=120s || true
+          echo "Namespace deletion complete (or namespace did not exist)."
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.0"
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: infrastructure/terraform/environments/dev
+        run: |
+          terraform init \
+            -backend-config="bucket=$(echo "${{ vars.TF_STATE_BUCKET }}" | tr -d '[:space:]')" \
+            -backend-config="prefix=terraform/dev"
+
+      - name: Terraform Destroy
+        working-directory: infrastructure/terraform/environments/dev
+        run: |
+          terraform destroy \
+            -auto-approve \
+            -var="project_id=$(echo "${{ vars.GCP_PROJECT_ID }}" | tr -d '[:space:]')" \
+            -var="region=$(echo "${{ vars.GCP_REGION }}" | tr -d '[:space:]')"
+
+      - name: Print destruction summary
+        run: |
+          echo "========================================"
+          echo "  Infrastructure destroyed successfully"
+          echo "========================================"
+          echo "  Project: $(echo "${{ vars.GCP_PROJECT_ID }}" | tr -d '[:space:]')"
+          echo "  Region:  $(echo "${{ vars.GCP_REGION }}" | tr -d '[:space:]')"
+          echo "  Run by:  ${{ github.actor }}"
+          echo "  At:      $(date -u)"
+          echo "========================================"

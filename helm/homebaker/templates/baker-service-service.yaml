@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: baker-service
+  namespace: homebaker
+  labels:
+    app: baker-service
+    {{- include "homebaker.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.bakerService.type }}
+  selector:
+    app: baker-service
+  ports:
+    - port: {{ .Values.bakerService.port }}
+      targetPort: {{ .Values.bakerService.port }}
+      protocol: TCP

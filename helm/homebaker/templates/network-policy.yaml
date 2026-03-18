@@ -1,0 +1,65 @@
+{{- if .Values.security.networkPolicy.enabled }}
+---
+# Default deny all ingress to baker-service
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all-ingress-baker-service
+  namespace: homebaker
+  labels:
+    {{- include "homebaker.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: baker-service
+  policyTypes:
+    - Ingress
+---
+# Allow frontend -> baker-service on port 4001
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-to-baker-service
+  namespace: homebaker
+  labels:
+    {{- include "homebaker.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: baker-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: homebaker-frontend
+      ports:
+        - protocol: TCP
+          port: {{ .Values.bakerService.port }}
+---
+# Allow baker-service -> external (Supabase) on port 443
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-baker-service-egress-supabase
+  namespace: homebaker
+  labels:
+    {{- include "homebaker.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: baker-service
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - protocol: TCP
+          port: 443
+    # Allow DNS resolution
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- end }}

@@ -1,0 +1,11 @@
+replicaCount: 1
+images:
+  tag: "staging-latest"
+bakerService:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi

@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homebaker-frontend
+  namespace: homebaker
+  labels:
+    app: homebaker-frontend
+    {{- include "homebaker.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: homebaker-frontend
+  template:
+    metadata:
+      labels:
+        app: homebaker-frontend
+    spec:
+      containers:
+        - name: homebaker-frontend
+          image: "{{ .Values.images.registry }}/{{ .Values.global.projectId }}/homebaker/{{ .Values.images.frontend }}:{{ .Values.images.tag }}"
+          imagePullPolicy: Always
+          ports:
+            - containerPort: {{ .Values.frontend.port }}
+          env:
+            - name: BAKER_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: homebaker-config
+                  key: BAKER_SERVICE_URL
+            - name: NEXT_PUBLIC_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: homebaker-config
+                  key: NEXT_PUBLIC_API_URL
+          resources:
+            requests:
+              cpu: {{ .Values.frontend.resources.requests.cpu | quote }}
+              memory: {{ .Values.frontend.resources.requests.memory | quote }}
+            limits:
+              cpu: {{ .Values.frontend.resources.limits.cpu | quote }}
+              memory: {{ .Values.frontend.resources.limits.memory | quote }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.frontend.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.frontend.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL

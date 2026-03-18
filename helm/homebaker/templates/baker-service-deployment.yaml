@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: baker-service
+  namespace: homebaker
+  labels:
+    app: baker-service
+    {{- include "homebaker.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: baker-service
+  template:
+    metadata:
+      labels:
+        app: baker-service
+    spec:
+      containers:
+        - name: baker-service
+          image: "{{ .Values.images.registry }}/{{ .Values.global.projectId }}/homebaker/{{ .Values.images.bakerService }}:{{ .Values.images.tag }}"
+          imagePullPolicy: Always
+          ports:
+            - containerPort: {{ .Values.bakerService.port }}
+          env:
+            - name: SUPABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.supabase.secretName }}
+                  key: url
+            - name: SUPABASE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.supabase.secretName }}
+                  key: key
+          resources:
+            requests:
+              cpu: {{ .Values.bakerService.resources.requests.cpu | quote }}
+              memory: {{ .Values.bakerService.resources.requests.memory | quote }}
+            limits:
+              cpu: {{ .Values.bakerService.resources.limits.cpu | quote }}
+              memory: {{ .Values.bakerService.resources.limits.memory | quote }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.bakerService.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.bakerService.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL

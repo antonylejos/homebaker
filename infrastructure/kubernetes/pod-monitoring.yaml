@@ -1,0 +1,13 @@
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: baker-service-monitoring
+  namespace: homebaker
+spec:
+  selector:
+    matchLabels:
+      app: baker-service
+  endpoints:
+    - port: 4001
+      interval: 30s
+      path: /metrics

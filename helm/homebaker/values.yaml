@@ -1,0 +1,43 @@
+global:
+  projectId: ""
+
+images:
+  registry: "us-central1-docker.pkg.dev"
+  bakerService: "baker-service"
+  frontend: "inventory-frontend"
+  tag: "latest"
+
+replicaCount: 1
+
+bakerService:
+  port: 4001
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+
+frontend:
+  port: 3000
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "512Mi"
+
+security:
+  networkPolicy:
+    enabled: true
+
+service:
+  frontend:
+    type: LoadBalancer
+  bakerService:
+    type: ClusterIP
+
+supabase:
+  secretName: "supabase-secret"

@@ -1,0 +1,426 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/**"
+      - "frontend/**"
+      - "infrastructure/kubernetes/**"
+  workflow_run:
+    workflows: ["Infrastructure"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+  security-events: write
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 1: Resolve the correct image tag regardless of trigger type
+  # ─────────────────────────────────────────────────────────────────────────────
+  wait-for-infra:
+    name: Resolve Image Tag
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.set-tag.outputs.image_tag }}
+    steps:
+      - name: Determine image tag
+        id: set-tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            IMAGE_TAG="${{ github.event.workflow_run.head_sha }}"
+          else
+            IMAGE_TAG="${{ github.sha }}"
+          fi
+          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "Resolved image_tag=${IMAGE_TAG}"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 2: Read Terraform outputs (registry URL, cluster name/zone)
+  # ─────────────────────────────────────────────────────────────────────────────
+  read-infra:
+    name: Read Infrastructure Outputs
+    runs-on: ubuntu-latest
+    needs: wait-for-infra
+    outputs:
+      registry_url: ${{ steps.tf-outputs.outputs.registry_url }}
+      cluster_name: ${{ steps.tf-outputs.outputs.cluster_name }}
+      cluster_zone: ${{ steps.tf-outputs.outputs.cluster_zone }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.wait-for-infra.outputs.image_tag }}
+
+      - name: Auth GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.0"
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: infrastructure/terraform/environments/dev
+        run: |
+          terraform init \
+            -backend-config="bucket=$(echo "${{ vars.TF_STATE_BUCKET }}" | tr -d '[:space:]')" \
+            -backend-config="prefix=terraform/dev"
+
+      - name: Read Terraform Outputs
+        id: tf-outputs
+        working-directory: infrastructure/terraform/environments/dev
+        run: |
+          REGISTRY_URL=$(terraform output -raw registry_url | tr -d '[:space:]')
+          CLUSTER_NAME=$(terraform output -raw cluster_name | tr -d '[:space:]')
+          CLUSTER_ZONE=$(terraform output -raw cluster_zone | tr -d '[:space:]')
+
+          echo "registry_url=${REGISTRY_URL}" >> $GITHUB_OUTPUT
+          echo "cluster_name=${CLUSTER_NAME}" >> $GITHUB_OUTPUT
+          echo "cluster_zone=${CLUSTER_ZONE}" >> $GITHUB_OUTPUT
+
+          echo "Registry:     ${REGISTRY_URL}"
+          echo "Cluster:      ${CLUSTER_NAME}"
+          echo "Zone:         ${CLUSTER_ZONE}"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 3: Security scan (non-blocking — findings reported, never block deploy)
+  # ─────────────────────────────────────────────────────────────────────────────
+  security-scan:
+    name: Trivy Security Scan
+    runs-on: ubuntu-latest
+    needs: [wait-for-infra, read-infra]
+    permissions:
+      id-token: write
+      contents: read
+      security-events: write
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.wait-for-infra.outputs.image_tag }}
+
+      - name: Auth GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          REGION=$(echo "${{ vars.GCP_REGION }}" | tr -d '[:space:]')
+          gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
+
+      - name: Pull baker-service image (if exists)
+        run: |
+          docker pull "${{ needs.read-infra.outputs.registry_url }}/baker-service:${{ needs.wait-for-infra.outputs.image_tag }}" || true
+
+      - name: Pull inventory-frontend image (if exists)
+        run: |
+          docker pull "${{ needs.read-infra.outputs.registry_url }}/inventory-frontend:${{ needs.wait-for-infra.outputs.image_tag }}" || true
+
+      - name: Run Trivy scan — baker-service
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ needs.read-infra.outputs.registry_url }}/baker-service:${{ needs.wait-for-infra.outputs.image_tag }}"
+          format: sarif
+          output: trivy-baker-service.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+        continue-on-error: true
+
+      - name: Run Trivy scan — inventory-frontend
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ needs.read-infra.outputs.registry_url }}/inventory-frontend:${{ needs.wait-for-infra.outputs.image_tag }}"
+          format: sarif
+          output: trivy-inventory-frontend.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+        continue-on-error: true
+
+      - name: Upload baker-service SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-baker-service.sarif
+          category: trivy-baker-service
+        continue-on-error: true
+
+      - name: Upload inventory-frontend SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-inventory-frontend.sarif
+          category: trivy-inventory-frontend
+        continue-on-error: true
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 4: Build and push both Docker images to Artifact Registry
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-and-push:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    needs: [wait-for-infra, read-infra]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.wait-for-infra.outputs.image_tag }}
+
+      - name: Auth GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          REGION=$(echo "${{ vars.GCP_REGION }}" | tr -d '[:space:]')
+          gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
+
+      - name: Build baker-service image
+        run: |
+          REGISTRY="${{ needs.read-infra.outputs.registry_url }}"
+          TAG="${{ needs.wait-for-infra.outputs.image_tag }}"
+          docker build \
+            --platform linux/amd64 \
+            -t "${REGISTRY}/baker-service:${TAG}" \
+            -f services/baker-service/Dockerfile \
+            services/baker-service
+
+      - name: Push baker-service image
+        run: |
+          REGISTRY="${{ needs.read-infra.outputs.registry_url }}"
+          TAG="${{ needs.wait-for-infra.outputs.image_tag }}"
+          docker push "${REGISTRY}/baker-service:${TAG}"
+
+      - name: Build inventory-frontend image
+        run: |
+          REGISTRY="${{ needs.read-infra.outputs.registry_url }}"
+          TAG="${{ needs.wait-for-infra.outputs.image_tag }}"
+          docker build \
+            --platform linux/amd64 \
+            --build-arg NEXT_PUBLIC_API_URL="/api" \
+            -t "${REGISTRY}/inventory-frontend:${TAG}" \
+            -f frontend/nextjs-app/Dockerfile \
+            frontend/nextjs-app
+
+      - name: Push inventory-frontend image
+        run: |
+          REGISTRY="${{ needs.read-infra.outputs.registry_url }}"
+          TAG="${{ needs.wait-for-infra.outputs.image_tag }}"
+          docker push "${REGISTRY}/inventory-frontend:${TAG}"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 5: Deploy to GKE
+  # ─────────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to GKE
+    runs-on: ubuntu-latest
+    needs: [build-and-push, wait-for-infra, read-infra]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.wait-for-infra.outputs.image_tag }}
+
+      - name: Auth GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Get GKE credentials
+        run: |
+          CLUSTER_NAME="${{ needs.read-infra.outputs.cluster_name }}"
+          CLUSTER_ZONE="${{ needs.read-infra.outputs.cluster_zone }}"
+          PROJECT_ID=$(echo "${{ vars.GCP_PROJECT_ID }}" | tr -d '[:space:]')
+          gcloud container clusters get-credentials "${CLUSTER_NAME}" \
+            --zone "${CLUSTER_ZONE}" \
+            --project "${PROJECT_ID}"
+
+      - name: Create namespace
+        run: kubectl create namespace homebaker || true
+
+      - name: Upsert Supabase secret
+        run: |
+          kubectl create secret generic supabase-secret \
+            --from-literal=url="${{ secrets.SUPABASE_URL }}" \
+            --from-literal=key="${{ secrets.SUPABASE_KEY }}" \
+            -n homebaker \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Substitute image placeholders in Kubernetes manifests
+        run: |
+          REGISTRY="${{ needs.read-infra.outputs.registry_url }}"
+          TAG="${{ needs.wait-for-infra.outputs.image_tag }}"
+
+          # Replace baker-service placeholder
+          find infrastructure/kubernetes -name "*.yaml" -o -name "*.yml" | xargs sed -i \
+            "s|YOUR_ACR_NAME.azurecr.io/baker-service:latest|${REGISTRY}/baker-service:${TAG}|g"
+
+          # Replace inventory-frontend placeholder
+          find infrastructure/kubernetes -name "*.yaml" -o -name "*.yml" | xargs sed -i \
+            "s|YOUR_ACR_NAME.azurecr.io/inventory-frontend:latest|${REGISTRY}/inventory-frontend:${TAG}|g"
+
+          echo "Manifest substitution complete."
+          echo "baker-service image: ${REGISTRY}/baker-service:${TAG}"
+          echo "inventory-frontend image: ${REGISTRY}/inventory-frontend:${TAG}"
+
+      - name: Wait for PodMonitoring CRD (non-blocking)
+        run: |
+          kubectl wait \
+            --for=condition=Established \
+            crd/podmonitorings.monitoring.googleapis.com \
+            --timeout=60s \
+            || echo "PodMonitoring CRD not yet available — continuing anyway"
+
+      - name: Apply Kubernetes manifests
+        run: kubectl apply -k infrastructure/kubernetes/
+
+      - name: Wait for baker-service rollout
+        run: kubectl rollout status deployment/baker-service -n homebaker --timeout=5m
+
+      - name: Wait for homebaker-frontend rollout
+        run: kubectl rollout status deployment/homebaker-frontend -n homebaker --timeout=5m
+
+      - name: Print deploy success summary
+        run: |
+          echo "========================================"
+          echo "  Deploy completed successfully"
+          echo "========================================"
+          kubectl get pods -n homebaker
+          kubectl get svc -n homebaker
+
+      - name: Debug diagnostics on failure
+        if: failure()
+        run: |
+          echo "========================================"
+          echo "  DEPLOY FAILED — Diagnostic Output"
+          echo "========================================"
+
+          echo ""
+          echo "--- Pods (homebaker namespace) ---"
+          kubectl get pods -n homebaker -o wide || true
+
+          echo ""
+          echo "--- Events (homebaker namespace) ---"
+          kubectl get events -n homebaker --sort-by='.lastTimestamp' || true
+
+          echo ""
+          echo "--- baker-service logs (last 50 lines) ---"
+          kubectl logs -n homebaker \
+            -l app=baker-service \
+            --tail=50 \
+            --all-containers=true \
+            || true
+
+          echo ""
+          echo "--- inventory-frontend logs (last 50 lines) ---"
+          kubectl logs -n homebaker \
+            -l app=homebaker-frontend \
+            --tail=50 \
+            --all-containers=true \
+            || true
+
+          echo ""
+          echo "--- baker-service deployment describe ---"
+          kubectl describe deployment baker-service -n homebaker || true
+
+          echo ""
+          echo "--- homebaker-frontend deployment describe ---"
+          kubectl describe deployment homebaker-frontend -n homebaker || true
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 6: Bootstrap ArgoCD (best-effort)
+  # ─────────────────────────────────────────────────────────────────────────────
+  bootstrap-argocd:
+    name: Bootstrap ArgoCD
+    runs-on: ubuntu-latest
+    needs: deploy
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.wait-for-infra.outputs.image_tag }}
+
+      - name: Auth GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Get GKE credentials
+        run: |
+          CLUSTER_NAME="${{ needs.read-infra.outputs.cluster_name }}"
+          CLUSTER_ZONE="${{ needs.read-infra.outputs.cluster_zone }}"
+          PROJECT_ID=$(echo "${{ vars.GCP_PROJECT_ID }}" | tr -d '[:space:]')
+          gcloud container clusters get-credentials "${CLUSTER_NAME}" \
+            --zone "${CLUSTER_ZONE}" \
+            --project "${PROJECT_ID}"
+
+      - name: Install ArgoCD CLI
+        run: |
+          curl -sSL -o /usr/local/bin/argocd \
+            https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          chmod +x /usr/local/bin/argocd
+
+      - name: Get ArgoCD server address
+        id: argocd-addr
+        run: |
+          ARGOCD_IP=$(kubectl get svc argocd-server -n argocd \
+            -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          if [ -z "${ARGOCD_IP}" ]; then
+            echo "ArgoCD LoadBalancer IP not available — skipping ArgoCD sync"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "argocd_ip=${ARGOCD_IP}" >> $GITHUB_OUTPUT
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get ArgoCD admin password
+        id: argocd-pass
+        if: steps.argocd-addr.outputs.skip != 'true'
+        run: |
+          ARGOCD_PASS=$(kubectl get secret argocd-initial-admin-secret \
+            -n argocd \
+            -o jsonpath='{.data.password}' | base64 -d)
+          echo "argocd_pass=${ARGOCD_PASS}" >> $GITHUB_OUTPUT
+
+      - name: Login to ArgoCD
+        if: steps.argocd-addr.outputs.skip != 'true'
+        run: |
+          argocd login "${{ steps.argocd-addr.outputs.argocd_ip }}" \
+            --username admin \
+            --password "${{ steps.argocd-pass.outputs.argocd_pass }}" \
+            --insecure \
+            || true
+
+      - name: Create or update ArgoCD application
+        if: steps.argocd-addr.outputs.skip != 'true'
+        run: |
+          REGISTRY="${{ needs.read-infra.outputs.registry_url }}"
+          TAG="${{ needs.wait-for-infra.outputs.image_tag }}"
+          PROJECT_ID=$(echo "${{ vars.GCP_PROJECT_ID }}" | tr -d '[:space:]')
+
+          # Apply ArgoCD Application manifest if it exists
+          if [ -f infrastructure/argocd/application-dev.yaml ]; then
+            kubectl apply -f infrastructure/argocd/application-dev.yaml || true
+          fi
+
+          # Set image overrides and sync
+          argocd app set homebaker \
+            --helm-set "images.registry=${REGISTRY}" \
+            --helm-set "images.tag=${TAG}" \
+            --helm-set "global.projectId=${PROJECT_ID}" \
+            || true
+
+          argocd app sync homebaker --timeout 120 || true

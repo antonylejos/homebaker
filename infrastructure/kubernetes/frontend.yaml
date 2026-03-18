@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homebaker-frontend
+  namespace: homebaker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: homebaker-frontend
+  template:
+    metadata:
+      labels:
+        app: homebaker-frontend
+    spec:
+      containers:
+        - name: homebaker-frontend
+          image: YOUR_ACR_NAME.azurecr.io/inventory-frontend:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: BAKER_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: homebaker-config
+                  key: BAKER_SERVICE_URL
+            - name: NEXT_PUBLIC_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: homebaker-config
+                  key: NEXT_PUBLIC_API_URL
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL

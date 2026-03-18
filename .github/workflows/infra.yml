@@ -1,0 +1,82 @@
+name: Infrastructure
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infrastructure/terraform/**"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  infracost:
+    name: Infracost
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Infracost API key
+        id: check
+        run: |
+          if [ -z "${{ vars.INFRACOST_API_KEY }}" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install Infracost
+        if: steps.check.outputs.skip != 'true'
+        run: curl -fsSL https://raw.githubusercontent.com/infracost/infracost/master/scripts/install.sh | sh
+
+      - name: Run Infracost
+        if: steps.check.outputs.skip != 'true'
+        env:
+          INFRACOST_API_KEY: ${{ vars.INFRACOST_API_KEY }}
+        run: |
+          infracost breakdown --path infrastructure/terraform/environments/dev \
+            --terraform-var-file infrastructure/terraform/environments/dev/terraform.tfvars || true
+
+  terraform:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infrastructure/terraform/environments/dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Auth GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.0"
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="bucket=$(echo "${{ vars.TF_STATE_BUCKET }}" | tr -d '[:space:]')" \
+            -backend-config="prefix=terraform/dev"
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        run: |
+          terraform plan \
+            -var="project_id=$(echo "${{ vars.GCP_PROJECT_ID }}" | tr -d '[:space:]')" \
+            -var="region=$(echo "${{ vars.GCP_REGION }}" | tr -d '[:space:]')" \
+            -out=tfplan
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
+
+      - name: Print Outputs
+        run: terraform output

@@ -1,0 +1,66 @@
+---
+# Health check playbook — pings /health on the frontend and baker-service.
+# Usage:
+#   ansible-playbook ansible/playbooks/healthcheck.yml \
+#     -e "frontend_url=http://34.x.x.x baker_service_url=http://34.x.x.y:4001"
+
+- name: Service health check
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    frontend_url: "http://localhost:3000"
+    baker_service_url: "http://localhost:4001"
+
+  tasks:
+    - name: Ping frontend /health
+      ansible.builtin.uri:
+        url: "{{ frontend_url }}/health"
+        method: GET
+        return_content: true
+        status_code: [200, 201, 204]
+        timeout: 10
+      register: frontend_health
+      ignore_errors: true
+
+    - name: Print frontend health response
+      ansible.builtin.debug:
+        msg: >-
+          Frontend ({{ frontend_url }}/health)
+          — status: {{ frontend_health.status | default('UNREACHABLE') }}
+          — body: {{ frontend_health.content | default('no response') }}
+
+    - name: Ping baker-service /health
+      ansible.builtin.uri:
+        url: "{{ baker_service_url }}/health"
+        method: GET
+        return_content: true
+        status_code: [200, 201, 204]
+        timeout: 10
+      register: baker_health
+      ignore_errors: true
+
+    - name: Print baker-service health response
+      ansible.builtin.debug:
+        msg: >-
+          Baker Service ({{ baker_service_url }}/health)
+          — status: {{ baker_health.status | default('UNREACHABLE') }}
+          — body: {{ baker_health.content | default('no response') }}
+
+    - name: Health check summary
+      ansible.builtin.debug:
+        msg: |
+          ============================================================
+          Health Check Summary
+          ============================================================
+          Frontend      : {{ 'OK' if frontend_health.status | default(0) == 200 else 'FAIL (status: ' + (frontend_health.status | default('N/A') | string) + ')' }}
+          Baker Service : {{ 'OK' if baker_health.status | default(0) == 200 else 'FAIL (status: ' + (baker_health.status | default('N/A') | string) + ')' }}
+          ============================================================
+
+    - name: Fail if any service is unhealthy
+      ansible.builtin.fail:
+        msg: "One or more services failed the health check. Check the summary above."
+      when: >
+        frontend_health.status | default(0) != 200 or
+        baker_health.status | default(0) != 200

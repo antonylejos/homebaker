@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: homebaker-config
+  namespace: homebaker
+data:
+  BAKER_SERVICE_URL: "http://baker-service:4001"
+  NEXT_PUBLIC_API_URL: "http://baker-service:4001"

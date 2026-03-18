@@ -1,0 +1,45 @@
+---
+# Configure kubectl — fetches credentials for the GKE cluster.
+# Usage:
+#   ansible-playbook ansible/playbooks/configure-kubectl.yml \
+#     -e "gcp_project=my-project gke_cluster_name=my-cluster gke_zone=us-central1-a"
+
+- name: Configure kubectl for GKE cluster
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    gcp_project: "{{ gcp_project }}"
+    gke_cluster_name: "{{ gke_cluster_name }}"
+    gke_zone: "{{ gke_zone }}"
+
+  tasks:
+    - name: Validate required variables are set
+      ansible.builtin.assert:
+        that:
+          - gcp_project is defined and gcp_project | length > 0
+          - gke_cluster_name is defined and gke_cluster_name | length > 0
+          - gke_zone is defined and gke_zone | length > 0
+        fail_msg: "gcp_project, gke_cluster_name, and gke_zone must all be provided."
+
+    - name: Fetch GKE cluster credentials
+      ansible.builtin.command: >
+        gcloud container clusters get-credentials {{ gke_cluster_name }}
+        --zone {{ gke_zone }}
+        --project {{ gcp_project }}
+      register: get_creds
+      changed_when: "'kubeconfig entry generated' in get_creds.stderr"
+
+    - name: Print credential output
+      ansible.builtin.debug:
+        msg: "{{ get_creds.stderr_lines }}"
+
+    - name: Verify kubectl can reach the cluster
+      ansible.builtin.command: kubectl cluster-info
+      register: cluster_info
+      changed_when: false
+
+    - name: Print cluster info
+      ansible.builtin.debug:
+        msg: "{{ cluster_info.stdout_lines }}"

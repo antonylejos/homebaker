@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: homebaker-config
+  namespace: homebaker
+  labels:
+    {{- include "homebaker.labels" . | nindent 4 }}
+data:
+  BAKER_SERVICE_URL: "http://baker-service:{{ .Values.bakerService.port }}"
+  NEXT_PUBLIC_API_URL: "http://baker-service:{{ .Values.bakerService.port }}"

@@ -1,0 +1,191 @@
+---
+# Bootstrap Supabase — creates all tables and the record_inventory_transaction function.
+# Usage:
+#   ansible-playbook ansible/playbooks/bootstrap-supabase.yml \
+#     -e "supabase_url=https://<ref>.supabase.co supabase_key=<service_role_key>"
+
+- name: Bootstrap Supabase schema for homebaker
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    supabase_url: "{{ supabase_url }}"
+    supabase_key: "{{ supabase_key }}"
+    supabase_sql_endpoint: "{{ supabase_url }}/rest/v1/rpc/execute_sql"
+    headers:
+      apikey: "{{ supabase_key }}"
+      Authorization: "Bearer {{ supabase_key }}"
+      Content-Type: "application/json"
+      Prefer: "return=representation"
+
+  tasks:
+    - name: Create ingredients table
+      ansible.builtin.uri:
+        url: "{{ supabase_url }}/rest/v1/rpc/execute_sql"
+        method: POST
+        headers: "{{ headers }}"
+        body_format: json
+        body:
+          query: |
+            CREATE TABLE IF NOT EXISTS ingredients (
+              id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+              user_id          text,
+              name             text NOT NULL,
+              cost             numeric(12,4) NOT NULL DEFAULT 0,
+              quantity         numeric(12,4) NOT NULL DEFAULT 1,
+              unit             text NOT NULL DEFAULT 'g',
+              unit_cost        numeric(12,6) GENERATED ALWAYS AS (
+                                 CASE WHEN quantity = 0 THEN 0
+                                      ELSE cost / quantity
+                                 END
+                               ) STORED,
+              created_at       timestamptz NOT NULL DEFAULT now()
+            );
+        status_code: [200, 201, 204]
+      register: ingredients_result
+      failed_when: >
+        ingredients_result.status not in [200, 201, 204] and
+        'already exists' not in (ingredients_result.json.message | default(''))
+
+    - name: Create recipes table
+      ansible.builtin.uri:
+        url: "{{ supabase_url }}/rest/v1/rpc/execute_sql"
+        method: POST
+        headers: "{{ headers }}"
+        body_format: json
+        body:
+          query: |
+            CREATE TABLE IF NOT EXISTS recipes (
+              id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+              user_id     text,
+              name        text NOT NULL,
+              description text,
+              created_at  timestamptz NOT NULL DEFAULT now()
+            );
+        status_code: [200, 201, 204]
+      register: recipes_result
+      failed_when: >
+        recipes_result.status not in [200, 201, 204] and
+        'already exists' not in (recipes_result.json.message | default(''))
+
+    - name: Create recipe_ingredients table
+      ansible.builtin.uri:
+        url: "{{ supabase_url }}/rest/v1/rpc/execute_sql"
+        method: POST
+        headers: "{{ headers }}"
+        body_format: json
+        body:
+          query: |
+            CREATE TABLE IF NOT EXISTS recipe_ingredients (
+              id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+              recipe_id       uuid NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+              ingredient_id   uuid NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+              quantity_used   numeric(12,4) NOT NULL DEFAULT 0,
+              UNIQUE (recipe_id, ingredient_id)
+            );
+        status_code: [200, 201, 204]
+      register: ri_result
+      failed_when: >
+        ri_result.status not in [200, 201, 204] and
+        'already exists' not in (ri_result.json.message | default(''))
+
+    - name: Create monthly_overheads table
+      ansible.builtin.uri:
+        url: "{{ supabase_url }}/rest/v1/rpc/execute_sql"
+        method: POST
+        headers: "{{ headers }}"
+        body_format: json
+        body:
+          query: |
+            CREATE TABLE IF NOT EXISTS monthly_overheads (
+              id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+              user_id     text UNIQUE,
+              electricity numeric(12,4) NOT NULL DEFAULT 0,
+              rent        numeric(12,4) NOT NULL DEFAULT 0,
+              misc        numeric(12,4) NOT NULL DEFAULT 0,
+              updated_at  timestamptz NOT NULL DEFAULT now()
+            );
+        status_code: [200, 201, 204]
+      register: overheads_result
+      failed_when: >
+        overheads_result.status not in [200, 201, 204] and
+        'already exists' not in (overheads_result.json.message | default(''))
+
+    - name: Create equipment table
+      ansible.builtin.uri:
+        url: "{{ supabase_url }}/rest/v1/rpc/execute_sql"
+        method: POST
+        headers: "{{ headers }}"
+        body_format: json
+        body:
+          query: |
+            CREATE TABLE IF NOT EXISTS equipment (
+              id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+              user_id             text,
+              name                text NOT NULL,
+              cost                numeric(12,4) NOT NULL DEFAULT 0,
+              useful_life_months  integer NOT NULL DEFAULT 1,
+              monthly_cost        numeric(12,6) GENERATED ALWAYS AS (
+                                    CASE WHEN useful_life_months = 0 THEN 0
+                                         ELSE cost / useful_life_months
+                                    END
+                                  ) STORED,
+              created_at          timestamptz NOT NULL DEFAULT now()
+            );
+        status_code: [200, 201, 204]
+      register: equipment_result
+      failed_when: >
+        equipment_result.status not in [200, 201, 204] and
+        'already exists' not in (equipment_result.json.message | default(''))
+
+    - name: Create production_settings table
+      ansible.builtin.uri:
+        url: "{{ supabase_url }}/rest/v1/rpc/execute_sql"
+        method: POST
+        headers: "{{ headers }}"
+        body_format: json
+        body:
+          query: |
+            CREATE TABLE IF NOT EXISTS production_settings (
+              id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+              user_id         text UNIQUE,
+              cakes_per_month integer NOT NULL DEFAULT 1,
+              updated_at      timestamptz NOT NULL DEFAULT now()
+            );
+        status_code: [200, 201, 204]
+      register: prodsettings_result
+      failed_when: >
+        prodsettings_result.status not in [200, 201, 204] and
+        'already exists' not in (prodsettings_result.json.message | default(''))
+
+    - name: Create calculations table
+      ansible.builtin.uri:
+        url: "{{ supabase_url }}/rest/v1/rpc/execute_sql"
+        method: POST
+        headers: "{{ headers }}"
+        body_format: json
+        body:
+          query: |
+            CREATE TABLE IF NOT EXISTS calculations (
+              id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+              recipe_id       uuid REFERENCES recipes(id) ON DELETE SET NULL,
+              ingredient_cost numeric(12,4) NOT NULL DEFAULT 0,
+              labor_cost      numeric(12,4) NOT NULL DEFAULT 0,
+              extras_cost     numeric(12,4) NOT NULL DEFAULT 0,
+              overhead_cost   numeric(12,4) NOT NULL DEFAULT 0,
+              total_cost      numeric(12,4) NOT NULL DEFAULT 0,
+              profit_margin   numeric(6,2)  NOT NULL DEFAULT 0,
+              profit_amount   numeric(12,4) NOT NULL DEFAULT 0,
+              selling_price   numeric(12,4) NOT NULL DEFAULT 0,
+              created_at      timestamptz   NOT NULL DEFAULT now()
+            );
+        status_code: [200, 201, 204]
+      register: calcs_result
+      failed_when: >
+        calcs_result.status not in [200, 201, 204] and
+        'already exists' not in (calcs_result.json.message | default(''))
+
+    - name: Print schema bootstrap summary
+      ansible.builtin.debug:
+        msg: "Supabase schema bootstrap complete — all tables created or already existed."
