@@ -238,8 +238,10 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
-      - name: Install gke-gcloud-auth-plugin
-        run: sudo apt-get install -y google-cloud-cli-gke-gcloud-auth-plugin
+      - name: Set up Cloud SDK with GKE auth plugin
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          install_components: gke-gcloud-auth-plugin
 
       - name: Get GKE credentials
         run: |
@@ -348,7 +350,7 @@ jobs:
   bootstrap-argocd:
     name: Bootstrap ArgoCD
     runs-on: ubuntu-latest
-    needs: deploy
+    needs: [deploy, wait-for-infra, read-infra]
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
@@ -361,8 +363,10 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
-      - name: Install gke-gcloud-auth-plugin
-        run: sudo apt-get install -y google-cloud-cli-gke-gcloud-auth-plugin
+      - name: Set up Cloud SDK with GKE auth plugin
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          install_components: gke-gcloud-auth-plugin
 
       - name: Get GKE credentials
         run: |
