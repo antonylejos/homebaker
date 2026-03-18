@@ -324,3 +324,4 @@ K8s YAML files contain placeholder `YOUR_ACR_NAME.azurecr.io/...`. The `deploy.y
 9. **Frontend git submodule** — `frontend/nextjs-app/` is a plain directory with no nested `.git`.
 
 10. **WIF org policy blocks SA keys** — WIF exclusively; no JSON key files anywhere.
+11. **`iam.serviceAccountUser` missing on default Compute SA** — Symptom: `Error 400: The user does not have access to service account XXX-compute@developer.gserviceaccount.com` when creating GKE cluster. Fix: grant `roles/iam.serviceAccountUser` at project level to the CI/CD SA. Added to bootstrap script `$Roles` array.

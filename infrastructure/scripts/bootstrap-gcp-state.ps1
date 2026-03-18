@@ -98,7 +98,8 @@ $Roles = @(
     "roles/monitoring.alertPolicyEditor",
     "roles/compute.networkAdmin",
     "roles/logging.admin",
-    "roles/cloudscheduler.admin"
+    "roles/cloudscheduler.admin",
+    "roles/iam.serviceAccountUser"
 )
 
 # ---------------------------------------------------------------------------
