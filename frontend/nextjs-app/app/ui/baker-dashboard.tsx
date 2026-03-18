@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:4001";
@@ -24,12 +24,6 @@ type Equipment = {
   monthly_cost: number;
 };
 
-type Overhead = {
-  id: string;
-  electricity: number;
-  rent: number;
-  misc: number;
-};
 
 type ProductionSettings = {
   cakes_per_month: number;
