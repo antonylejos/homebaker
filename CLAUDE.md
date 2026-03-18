@@ -324,6 +324,8 @@ K8s YAML files contain placeholder `YOUR_ACR_NAME.azurecr.io/...`. The `deploy.y
 9. **Frontend git submodule** — `frontend/nextjs-app/` is a plain directory with no nested `.git`.
 
 10. **WIF org policy blocks SA keys** — WIF exclusively; no JSON key files anywhere.
+13. **`ImagePullBackOff` on GKE — Artifact Registry 403** — Symptom: pods stuck in `ImagePullBackOff`. GKE nodes pull images using the default Compute Engine SA (`PROJECT_NUMBER-compute@developer.gserviceaccount.com`), not the CI/CD SA. Fix: grant `roles/artifactregistry.reader` to the default Compute SA. Added to bootstrap script Step 4b.
+
 12. **`gke-gcloud-auth-plugin` not found on GitHub Actions runner** — Symptom: `executable gke-gcloud-auth-plugin not found` when kubectl tries to auth against GKE. Fix: add `sudo apt-get install -y google-cloud-cli-gke-gcloud-auth-plugin` step before `get-credentials` in any job that uses kubectl. Note: `gcloud components install` is disabled on GitHub-hosted runners; the apt package is `google-cloud-cli-gke-gcloud-auth-plugin` (NOT `google-cloud-sdk-...`).
 
 11. **`iam.serviceAccountUser` missing on default Compute SA** — Symptom: `Error 400: The user does not have access to service account XXX-compute@developer.gserviceaccount.com` when creating GKE cluster. Fix: grant `roles/iam.serviceAccountUser` at project level to the CI/CD SA. Added to bootstrap script `$Roles` array.

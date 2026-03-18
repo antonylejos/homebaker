@@ -172,6 +172,23 @@ foreach ($role in $Roles) {
 }
 
 # ---------------------------------------------------------------------------
+# Step 4b - Grant Artifact Registry read access to the default Compute SA
+#           GKE nodes pull images using this SA, not the CI/CD SA.
+# ---------------------------------------------------------------------------
+
+Write-Step "Granting artifactregistry.reader to default Compute Engine SA"
+
+$ProjectNumber = & gcloud projects describe $ProjectId --format="value(projectNumber)"
+$ComputeSa = "${ProjectNumber}-compute@developer.gserviceaccount.com"
+
+Invoke-GcloudIdempotent @(
+    "projects", "add-iam-policy-binding", $ProjectId,
+    "--member=serviceAccount:$ComputeSa",
+    "--role=roles/artifactregistry.reader",
+    "--condition=None"
+)
+
+# ---------------------------------------------------------------------------
 # Step 5 - Create Workload Identity Federation pool
 # ---------------------------------------------------------------------------
 
