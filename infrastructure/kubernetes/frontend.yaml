@@ -49,7 +49,6 @@ spec:
             initialDelaySeconds: 15
             periodSeconds: 5
           securityContext:
-            runAsNonRoot: true
             allowPrivilegeEscalation: false
             capabilities:
               drop:
