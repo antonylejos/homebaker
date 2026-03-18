@@ -10,9 +10,8 @@ resource "google_container_cluster" "primary" {
   remove_default_node_pool = true
   initial_node_count       = 1
 
-  # kubernetes_version = null lets GKE automatically use the latest GA release.
-  # Do NOT pin to a specific version (e.g. "1.30") — LTS versions require explicit opt-in.
-  kubernetes_version = null
+  # Omitting min_master_version lets GKE automatically use the latest GA release.
+  # Do NOT set it to a specific version (e.g. "1.30") — LTS versions require explicit opt-in.
 
   ip_allocation_policy {
     cluster_secondary_range_name  = var.pods_range_name

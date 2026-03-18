@@ -311,7 +311,7 @@ K8s YAML files contain placeholder `YOUR_ACR_NAME.azurecr.io/...`. The `deploy.y
 
 3. **`Insufficient cpu` (replicas)** — `replicas: 1` in all K8s manifests and Helm values from day one.
 
-4. **`kubernetes_version` rejected** — Set to `null` in `modules/gke/main.tf`.
+4. **`kubernetes_version` not a valid argument on `google_container_cluster`** — Removed entirely. Omitting `min_master_version` defaults to latest GA. (`kubernetes_version` only exists on `google_container_node_pool`.)
 
 5. **`WORKLOADS` in monitoring_config** — Only `["SYSTEM_COMPONENTS"]` in `monitoring_config`. (`WORKLOADS` is valid in `logging_config`.)
 
