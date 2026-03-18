@@ -239,9 +239,7 @@ jobs:
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
       - name: Install gke-gcloud-auth-plugin
-        run: |
-          gcloud components install gke-gcloud-auth-plugin --quiet \
-            || sudo apt-get install -y google-cloud-sdk-gke-gcloud-auth-plugin
+        run: sudo apt-get install -y google-cloud-cli-gke-gcloud-auth-plugin
 
       - name: Get GKE credentials
         run: |
@@ -364,9 +362,7 @@ jobs:
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
       - name: Install gke-gcloud-auth-plugin
-        run: |
-          gcloud components install gke-gcloud-auth-plugin --quiet \
-            || sudo apt-get install -y google-cloud-sdk-gke-gcloud-auth-plugin
+        run: sudo apt-get install -y google-cloud-cli-gke-gcloud-auth-plugin
 
       - name: Get GKE credentials
         run: |
