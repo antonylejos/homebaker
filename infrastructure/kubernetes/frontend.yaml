@@ -31,23 +31,25 @@ spec:
                   key: NEXT_PUBLIC_API_URL
           resources:
             requests:
-              cpu: "200m"
+              cpu: "100m"
               memory: "256Mi"
             limits:
-              cpu: "1000m"
+              cpu: "500m"
               memory: "512Mi"
           livenessProbe:
             httpGet:
               path: /
               port: 3000
-            initialDelaySeconds: 30
-            periodSeconds: 10
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 5
           readinessProbe:
             httpGet:
               path: /
               port: 3000
-            initialDelaySeconds: 15
-            periodSeconds: 5
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 5
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
