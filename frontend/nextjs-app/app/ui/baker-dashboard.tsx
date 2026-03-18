@@ -239,18 +239,20 @@ function Skeleton({ width = "100%", height = "20px", style = {} }: { width?: str
   return <div className="skeleton" style={{ width, height, ...style }} />;
 }
 
-function SectionHeader({ children }: { children: React.ReactNode }) {
+function SectionHeader({ children, emoji, color = "var(--accent-rose)" }: { children: React.ReactNode; emoji?: string; color?: string }) {
   return (
-    <h2
-      style={{
-        fontSize: "13px",
-        fontWeight: 700,
-        textTransform: "uppercase",
-        letterSpacing: "0.08em",
-        color: "var(--text-secondary)",
-        marginBottom: "12px",
-      }}
-    >
+    <h2 style={{
+      fontSize: "13px",
+      fontWeight: 800,
+      textTransform: "uppercase",
+      letterSpacing: "0.08em",
+      color,
+      marginBottom: "12px",
+      display: "flex",
+      alignItems: "center",
+      gap: "6px",
+    }}>
+      {emoji && <span style={{ fontSize: "16px" }}>{emoji}</span>}
       {children}
     </h2>
   );
@@ -827,9 +829,48 @@ export default function BakerDashboard({ initialIngredients, initialSettings }: 
       {/* Left panel */}
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
 
+        {/* Hero Banner */}
+        <div style={{
+          background: "linear-gradient(135deg, #e11d48 0%, #ec4899 60%, #a855f7 100%)",
+          borderRadius: "20px",
+          padding: "20px 24px",
+          color: "white",
+          position: "relative",
+          overflow: "hidden",
+          marginBottom: "4px",
+        }}>
+          {/* Decorative floating emojis */}
+          <span className="hero-emoji animate-float" style={{ top: "8px", right: "60px", animationDelay: "0s" }}>🎂</span>
+          <span className="hero-emoji animate-float" style={{ top: "4px", right: "16px", animationDelay: "0.7s", fontSize: "22px" }}>✨</span>
+          <span className="hero-emoji animate-float" style={{ bottom: "8px", right: "32px", animationDelay: "1.4s", fontSize: "20px" }}>🧁</span>
+          <span className="hero-emoji animate-float" style={{ bottom: "4px", right: "80px", animationDelay: "0.3s", fontSize: "16px" }}>🌸</span>
+          <div style={{ position: "relative", zIndex: 1 }}>
+            <div style={{ fontSize: "22px", fontWeight: 800, marginBottom: "4px", lineHeight: 1.2 }}>
+              Know your real cost 🎉
+            </div>
+            <div style={{ fontSize: "13px", opacity: 0.9, lineHeight: 1.4 }}>
+              Price your cakes profitably — every ingredient, every hour, every expense.
+            </div>
+            {overheadPerCake > 0 && (
+              <div style={{
+                marginTop: "12px",
+                background: "rgba(255,255,255,0.2)",
+                borderRadius: "10px",
+                padding: "8px 12px",
+                fontSize: "12px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+              }}>
+                ⚡ Overhead per cake: <strong>{formatINR(overheadPerCake)}</strong> — already included!
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Add Ingredients */}
         <div style={panelStyle}>
-          <SectionHeader>Add Ingredients</SectionHeader>
+          <SectionHeader emoji="🥣">Add Ingredients</SectionHeader>
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "8px" }}>
               <select
@@ -918,7 +959,7 @@ export default function BakerDashboard({ initialIngredients, initialSettings }: 
 
         {/* Labor */}
         <div style={panelStyle}>
-          <SectionHeader>Labor</SectionHeader>
+          <SectionHeader emoji="⏰">Labor</SectionHeader>
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
               <InputField label="Hours" type="number" value={laborHours} onChange={setLaborHours} placeholder="0" min={0} />
@@ -935,7 +976,7 @@ export default function BakerDashboard({ initialIngredients, initialSettings }: 
 
         {/* Extras */}
         <div style={panelStyle}>
-          <SectionHeader>Extras (Packaging, Delivery, etc.)</SectionHeader>
+          <SectionHeader emoji="📦">Extras (Packaging, Delivery, etc.)</SectionHeader>
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 100px auto", gap: "8px", alignItems: "flex-end" }}>
               <InputField label="Item name" type="text" value={extraName} onChange={setExtraName} placeholder="Box, ribbon…" />
@@ -974,7 +1015,7 @@ export default function BakerDashboard({ initialIngredients, initialSettings }: 
 
         {/* Profit Margin */}
         <div style={panelStyle}>
-          <SectionHeader>Profit Margin</SectionHeader>
+          <SectionHeader emoji="💰">Profit Margin</SectionHeader>
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
               <input
@@ -1029,7 +1070,7 @@ export default function BakerDashboard({ initialIngredients, initialSettings }: 
       {/* Right panel — Results */}
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
         <div style={{ ...panelStyle, position: "sticky", top: "16px" }}>
-          <SectionHeader>Cost Breakdown</SectionHeader>
+          <SectionHeader emoji="🧮">Cost Breakdown</SectionHeader>
 
           {!calcResult && !calculating && (
             <div style={{ textAlign: "center", padding: "32px 0", color: "var(--text-muted)" }}>
@@ -1095,23 +1136,17 @@ export default function BakerDashboard({ initialIngredients, initialSettings }: 
               </div>
 
               {/* Selling price */}
-              <div
-                style={{
-                  margin: "16px 0 0",
-                  padding: "18px",
-                  background: "linear-gradient(135deg, rgba(225,29,72,0.08), rgba(225,29,72,0.04))",
-                  border: "2px solid rgba(225,29,72,0.2)",
-                  borderRadius: "12px",
-                  textAlign: "center",
-                }}
-              >
-                <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--accent-rose)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "4px" }}>
-                  Suggested Selling Price
+              {calcResult && (
+                <div className="price-card animate-confetti" style={{ marginTop: "8px" }}>
+                  <div style={{ fontSize: "13px", opacity: 0.85, marginBottom: "4px" }}>🎉 Suggested Selling Price</div>
+                  <div style={{ fontSize: "42px", fontWeight: 900, letterSpacing: "-1px", lineHeight: 1 }}>
+                    {formatINR(calcResult.selling_price)}
+                  </div>
+                  <div style={{ fontSize: "12px", opacity: 0.8, marginTop: "8px" }}>
+                    Cost {formatINR(calcResult.total_cost)} + Profit {formatINR(calcResult.profit_amount)}
+                  </div>
                 </div>
-                <div style={{ fontSize: "36px", fontWeight: 800, color: "var(--accent-rose)", lineHeight: 1.1 }}>
-                  {formatINR(calcResult.selling_price)}
-                </div>
-              </div>
+              )}
 
               {/* Insight */}
               {calcResult.overhead_cost > 0 && (
@@ -1162,7 +1197,7 @@ export default function BakerDashboard({ initialIngredients, initialSettings }: 
 
       {/* Add Form */}
       <div style={panelStyle}>
-        <SectionHeader>Add Ingredient</SectionHeader>
+        <SectionHeader emoji="✨">Add Ingredient</SectionHeader>
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           <InputField label="Name" value={ingForm.name} onChange={(v) => setIngForm((f) => ({ ...f, name: v }))} placeholder="e.g. All-purpose flour" />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
@@ -1196,7 +1231,7 @@ export default function BakerDashboard({ initialIngredients, initialSettings }: 
 
       {/* List */}
       <div style={panelStyle}>
-        <SectionHeader>Your Ingredients ({ingredients.length})</SectionHeader>
+        <SectionHeader emoji="🥕">Your Ingredients ({ingredients.length})</SectionHeader>
 
         {ingredientsLoading && (
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -1210,9 +1245,11 @@ export default function BakerDashboard({ initialIngredients, initialSettings }: 
           </div>
         )}
 
-        {!ingredientsLoading && ingredients.length > 0 && (
+        {!ingredientsLoading && ingredients.length > 0 && (() => {
+          const ingColors = ["#e11d48", "#a855f7", "#0d9488", "#f59e0b", "#ec4899", "#0ea5e9"];
+          return (
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            {ingredients.map((ing) => (
+            {ingredients.map((ing, ingIdx) => (
               <div key={ing.id}>
                 {editingIng?.id === ing.id ? (
                   <div
@@ -1247,6 +1284,7 @@ export default function BakerDashboard({ initialIngredients, initialSettings }: 
                       border: "1px solid var(--border-color)",
                       borderRadius: "12px",
                       transition: "box-shadow 0.15s",
+                      borderLeft: `3px solid ${ingColors[ingIdx % ingColors.length]}`,
                     }}
                   >
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -1276,7 +1314,8 @@ export default function BakerDashboard({ initialIngredients, initialSettings }: 
               </div>
             ))}
           </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );
@@ -1311,7 +1350,7 @@ export default function BakerDashboard({ initialIngredients, initialSettings }: 
 
       {/* Monthly overheads */}
       <div style={panelStyle}>
-        <SectionHeader>Monthly Overheads</SectionHeader>
+        <SectionHeader emoji="💡">Monthly Overheads</SectionHeader>
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           <InputField
             label="Electricity Bill (₹)"
@@ -1357,7 +1396,7 @@ export default function BakerDashboard({ initialIngredients, initialSettings }: 
 
       {/* Equipment */}
       <div style={panelStyle}>
-        <SectionHeader>Equipment & Depreciation</SectionHeader>
+        <SectionHeader emoji="🔧">Equipment & Depreciation</SectionHeader>
 
         {/* Add equipment form */}
         <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "16px" }}>
@@ -1429,8 +1468,8 @@ export default function BakerDashboard({ initialIngredients, initialSettings }: 
   const renderRecipes = () => (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h2 style={{ fontSize: "18px", fontWeight: 700, color: "var(--text-primary)" }}>
-          Saved Recipes ({recipes.length})
+        <h2 style={{ fontSize: "18px", fontWeight: 700, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "8px" }}>
+          <span style={{ fontSize: "22px" }}>📖</span> Saved Recipes ({recipes.length})
         </h2>
         <Btn onClick={fetchRecipes} variant="ghost" size="sm">Refresh</Btn>
       </div>
@@ -1463,27 +1502,41 @@ export default function BakerDashboard({ initialIngredients, initialSettings }: 
         </div>
       )}
 
-      {!recipesLoading && recipes.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          {recipes.map((recipe) => (
-            <div
-              key={recipe.id}
-              style={{
-                ...panelStyle,
-                padding: "16px 18px",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "10px" }}>
+      {!recipesLoading && recipes.length > 0 && (() => {
+        const recipeGradients = [
+          "linear-gradient(135deg, #fce7f3, #ede9fe)",
+          "linear-gradient(135deg, #fef3c7, #fde68a)",
+          "linear-gradient(135deg, #d1fae5, #a7f3d0)",
+          "linear-gradient(135deg, #dbeafe, #bfdbfe)",
+          "linear-gradient(135deg, #ffe4e6, #fecdd3)",
+          "linear-gradient(135deg, #f3e8ff, #e9d5ff)",
+        ];
+        const recipeEmojis = ["🎂", "🧁", "🍰", "🍩", "🥧", "🎉"];
+        return (
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {recipes.map((recipe, index) => (
+              <div
+                key={recipe.id}
+                style={{
+                  background: recipeGradients[index % recipeGradients.length],
+                  borderRadius: "20px",
+                  padding: "20px 18px 16px",
+                  boxShadow: "var(--shadow-panel)",
+                }}
+              >
+                <div style={{ textAlign: "center", fontSize: "48px", lineHeight: 1, marginBottom: "10px" }}>
+                  {recipeEmojis[index % recipeEmojis.length]}
+                </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <h3 style={{ fontSize: "16px", fontWeight: 700, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <h3 style={{ fontSize: "16px", fontWeight: 700, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "center" }}>
                     {recipe.name}
                   </h3>
                   {recipe.description && (
-                    <p style={{ fontSize: "13px", color: "var(--text-secondary)", marginTop: "3px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <p style={{ fontSize: "13px", color: "var(--text-secondary)", marginTop: "3px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "center" }}>
                       {recipe.description}
                     </p>
                   )}
-                  <div style={{ marginTop: "8px", display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                  <div style={{ marginTop: "10px", display: "flex", flexWrap: "wrap", gap: "6px", justifyContent: "center" }}>
                     {(recipe.ingredients || []).slice(0, 3).map((ci, i) => (
                       <span
                         key={i}
@@ -1491,10 +1544,10 @@ export default function BakerDashboard({ initialIngredients, initialSettings }: 
                           fontSize: "11px",
                           fontWeight: 600,
                           padding: "2px 8px",
-                          background: "rgba(225,29,72,0.08)",
+                          background: "rgba(225,29,72,0.12)",
                           color: "var(--accent-rose)",
                           borderRadius: "20px",
-                          border: "1px solid rgba(225,29,72,0.12)",
+                          border: "1px solid rgba(225,29,72,0.18)",
                         }}
                       >
                         {ci.ingredient_name}
@@ -1508,34 +1561,34 @@ export default function BakerDashboard({ initialIngredients, initialSettings }: 
                     <span
                       style={{
                         fontSize: "11px",
-                        fontWeight: 600,
-                        padding: "2px 8px",
-                        background: "rgba(245,158,11,0.1)",
+                        fontWeight: 700,
+                        padding: "2px 10px",
+                        background: "rgba(245,158,11,0.18)",
                         color: "var(--accent-amber-dark)",
                         borderRadius: "20px",
-                        border: "1px solid rgba(245,158,11,0.15)",
+                        border: "1px solid rgba(245,158,11,0.25)",
                       }}
                     >
                       {recipe.profit_margin ?? 30}% margin
                     </span>
                   </div>
                 </div>
+                <div style={{ display: "flex", gap: "8px", marginTop: "14px" }}>
+                  <Btn onClick={() => handleLoadRecipe(recipe)} variant="primary" size="sm" style={{ flex: 1 }}>
+                    <LoadIcon size={14} /> Load Recipe
+                  </Btn>
+                  <button
+                    onClick={() => handleDeleteRecipe(recipe.id, recipe.name)}
+                    style={{ background: "rgba(225,29,72,0.08)", border: "1px solid rgba(225,29,72,0.15)", borderRadius: "10px", padding: "8px 12px", cursor: "pointer", color: "var(--accent-rose)", minHeight: "36px", display: "flex", alignItems: "center", gap: "4px", fontSize: "13px", fontWeight: 600 }}
+                  >
+                    <TrashIcon size={14} /> Delete
+                  </button>
+                </div>
               </div>
-              <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
-                <Btn onClick={() => handleLoadRecipe(recipe)} variant="primary" size="sm" style={{ flex: 1 }}>
-                  <LoadIcon size={14} /> Load Recipe
-                </Btn>
-                <button
-                  onClick={() => handleDeleteRecipe(recipe.id, recipe.name)}
-                  style={{ background: "rgba(225,29,72,0.08)", border: "1px solid rgba(225,29,72,0.15)", borderRadius: "10px", padding: "8px 12px", cursor: "pointer", color: "var(--accent-rose)", minHeight: "36px", display: "flex", alignItems: "center", gap: "4px", fontSize: "13px", fontWeight: 600 }}
-                >
-                  <TrashIcon size={14} /> Delete
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        );
+      })()}
     </div>
   );
 
@@ -1604,6 +1657,13 @@ export default function BakerDashboard({ initialIngredients, initialSettings }: 
 
   // ─── Tab config ───────────────────────────────────────────────────────────
 
+  const tabColors: Record<Tab, string> = {
+    calculator: "#e11d48",
+    ingredients: "#a855f7",
+    overheads: "#0d9488",
+    recipes: "#f59e0b",
+  };
+
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: "calculator",  label: "Calculator",  icon: <CakeIcon size={22} /> },
     { id: "ingredients", label: "Ingredients", icon: <ListIcon size={22} /> },
@@ -1623,10 +1683,10 @@ export default function BakerDashboard({ initialIngredients, initialSettings }: 
         {/* Header */}
         <header
           style={{
-            background: "var(--panel-bg)",
+            background: "linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,240,248,0.95) 100%)",
             backdropFilter: "blur(12px)",
             WebkitBackdropFilter: "blur(12px)",
-            borderBottom: "1px solid var(--border-color)",
+            borderBottom: "1.5px solid rgba(236,72,153,0.15)",
             padding: "0 16px",
             position: "sticky",
             top: 0,
@@ -1640,7 +1700,7 @@ export default function BakerDashboard({ initialIngredients, initialSettings }: 
                   width: "36px",
                   height: "36px",
                   borderRadius: "10px",
-                  background: "linear-gradient(135deg, #e11d48, #f59e0b)",
+                  background: "linear-gradient(135deg, #e11d48 0%, #ec4899 50%, #a855f7 100%)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -1669,8 +1729,8 @@ export default function BakerDashboard({ initialIngredients, initialSettings }: 
                       padding: "8px 14px",
                       borderRadius: "10px",
                       border: "none",
-                      background: tab === t.id ? "rgba(225,29,72,0.1)" : "transparent",
-                      color: tab === t.id ? "var(--accent-rose)" : "var(--text-secondary)",
+                      background: tab === t.id ? `${tabColors[t.id]}18` : "transparent",
+                      color: tab === t.id ? tabColors[t.id] : "var(--text-secondary)",
                       fontWeight: tab === t.id ? 700 : 500,
                       fontSize: "14px",
                       cursor: "pointer",
@@ -1732,7 +1792,7 @@ export default function BakerDashboard({ initialIngredients, initialSettings }: 
               padding: "10px 4px",
               border: "none",
               background: "transparent",
-              color: tab === t.id ? "var(--accent-rose)" : "var(--text-muted)",
+              color: tab === t.id ? tabColors[t.id] : "var(--text-muted)",
               cursor: "pointer",
               transition: "color 0.15s",
               minHeight: "56px",
@@ -1748,7 +1808,7 @@ export default function BakerDashboard({ initialIngredients, initialSettings }: 
                   transform: "translateX(-50%)",
                   width: "32px",
                   height: "3px",
-                  background: "var(--accent-rose)",
+                  background: tabColors[t.id],
                   borderRadius: "0 0 4px 4px",
                 }}
               />
